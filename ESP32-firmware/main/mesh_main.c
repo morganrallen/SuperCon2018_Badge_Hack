@@ -210,7 +210,7 @@ void esp_mesh_p2p_rx_main(void *arg)
             continue;
         }
 
-        printf(": %s\n", rx_buf);
+        printf("%s\n", rx_buf);
     }
 
     printf("RX barfed\n");
