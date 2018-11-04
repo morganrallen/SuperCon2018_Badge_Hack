@@ -36,7 +36,9 @@ static QueueHandle_t uart0_queue;
  *******************************************************/
 static const char *MESH_TAG = "mesh_main";
 static const uint8_t MESH_ID[6] = { 0x77, 0x77, 0x77, 0x77, 0x77, 0x77};
-static const mesh_addr_t broadcast_group_id = {.addr = {0x77, 0x77, 0x77, 0x77, 0x77, 0x77}};
+static const mesh_addr_t broadcast_group_id = {
+  .addr = { 0x01, 0x00, 0x5E, 0x66, 0x66, 0x66 }
+};
 static uint8_t tx_buf[TX_SIZE] = { 0, };
 static uint8_t rx_buf[RX_SIZE] = { 0, };
 static bool is_running = true;
@@ -88,12 +90,14 @@ static void uart_event_task(void *pvParameters)
             esp_mesh_get_routing_table((mesh_addr_t *) &route_table,
                                        CONFIG_MESH_ROUTE_TABLE_SIZE * 6, &route_table_size);
 
-            esp_mesh_send(NULL, &data, MESH_DATA_P2P, NULL, 0);
-            esp_mesh_send(&broadcast_group_id, &data, MESH_DATA_P2P, NULL, 0);
+            //esp_mesh_send(NULL, &data, MESH_DATA_P2P, NULL, 0);
+            esp_mesh_send(&broadcast_group_id, &data, MESH_DATA_P2P | MESH_DATA_GROUP, NULL, 0);
+            /*
             for (i = 0; i < route_table_size; i++) {
               err = esp_mesh_send(&route_table[i], &data, MESH_DATA_P2P, NULL, 0);
               ESP_ERROR_CHECK(err);
             }
+            */
 
             bzero(dtmp, RD_BUF_SIZE);
             pos = 0;
@@ -101,7 +105,6 @@ static void uart_event_task(void *pvParameters)
           }
 
 					break;
-
 
 				case UART_FIFO_OVF:
 				case UART_BUFFER_FULL:
@@ -279,6 +282,9 @@ void mesh_event_handler(mesh_event_t event)
         if (esp_mesh_is_root()) {
             tcpip_adapter_dhcpc_start(TCPIP_ADAPTER_IF_STA);
         }
+
+        ESP_ERROR_CHECK(esp_mesh_set_group_id(&broadcast_group_id, 1));
+
         esp_mesh_comm_p2p_start();
         break;
     case MESH_EVENT_PARENT_DISCONNECTED:
@@ -369,6 +375,22 @@ void app_main(void)
 {
     esp_log_set_vprintf(no_log);
 
+    uart_config_t uart_config = {
+      .baud_rate = 9600,
+      .data_bits = UART_DATA_8_BITS,
+      .parity = UART_PARITY_DISABLE,
+      .stop_bits = UART_STOP_BITS_1,
+      .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+      .rx_flow_ctrl_thresh = 122,
+    };
+
+    ESP_ERROR_CHECK(uart_param_config(uart_num, &uart_config));
+    uart_driver_install(uart_num, BUF_SIZE * 2, BUF_SIZE * 2, 20, &uart0_queue, 0);
+
+    xTaskCreate(uart_event_task, "uart_event_task", 2048, NULL, 12, NULL);
+
+    printf("\n\nSuperCon 2018\n");
+
     ESP_ERROR_CHECK(nvs_flash_init());
     /*  tcpip initialization */
     tcpip_adapter_init();
@@ -424,22 +446,4 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_mesh_start());
     //ESP_LOGI(MESH_TAG, "mesh starts successfully, heap:%d, %s\n",  esp_get_free_heap_size(),
     //esp_mesh_is_root_fixed() ? "root fixed" : "root not fixed");
-
-    uart_config_t uart_config = {
-      .baud_rate = 9600,
-      .data_bits = UART_DATA_8_BITS,
-      .parity = UART_PARITY_DISABLE,
-      .stop_bits = UART_STOP_BITS_1,
-      .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-      .rx_flow_ctrl_thresh = 122,
-    };
-
-    ESP_ERROR_CHECK(uart_param_config(uart_num, &uart_config));
-    uart_driver_install(uart_num, BUF_SIZE * 2, BUF_SIZE * 2, 20, &uart0_queue, 0);
-
-    xTaskCreate(uart_event_task, "uart_event_task", 2048, NULL, 12, NULL);
-
-    char* test_str = "This is a test string.\n";
-    uart_write_bytes(uart_num, (const char*)test_str, strlen(test_str));
-    printf("***************test\n");
 }
