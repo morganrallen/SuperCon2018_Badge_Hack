@@ -14,15 +14,23 @@
 
 extern uint8_t get_stat,key_buffer_ptr,cmd_line_buff[80], cmd_line_pointer,cmd_line_key_stat_old,prompt;
 
+extern int8_t bprog[];
+
 uint8_t rxBuf[80];
 uint8_t rxBufPos;
 
 uint8_t nick[20];
 
+void tx_str(int8_t *str) {
+    while (*str)
+        tx_write(*str++);
+}
+
 void ircCommand(uint8_t * msg) {
     int len;
-    stdio_c('\n');
+    int8_t *p;
     if (strncmp("/nick ", msg, 6) == 0) {
+        stdio_c('\n');
         msg += 6;
         len = strlen(msg);
         if (len > 0 && len < 10) {
@@ -33,6 +41,26 @@ void ircCommand(uint8_t * msg) {
             video_set_color(EGA_BRED,EGA_DGRAY);
             stdio_write("* Bad command\n");
         }
+    } else if (strncmp("/bas ", msg, 5) == 0) {
+        stdio_c('\n');
+        video_set_color(15,0);
+        cmd_exec(msg + 5);
+        stdio_c('\n');
+    } else if (strncmp("/rrun", msg, 5) == 0) {
+        video_set_color(15,0);
+        stdio_c('\n');
+        tx_str("/bas memclr\n");
+        p = bprog;
+        while (*p) {
+            tx_str("/bas ");
+            while (*p && *p != '\n')
+                tx_write(*p++);
+            if (*p) //skip over the newline
+                p++;
+            tx_write('\n');
+        }
+        tx_str("/bas run\n");
+        
     }
 }
 
@@ -131,28 +159,38 @@ void checkRx(void) {
 
     while (rx_sta()) {
         uint8_t c = rx_read();
-        if (rxBufPos < 80)
+        if (rxBufPos < 80 && c != '\n')
             rxBuf[rxBufPos++] = c;
         if (c == '\n') {
-            //TODO write line, mark ready, whatever
-            //scroll up to make room
-            for (j=1; j<(DISP_BUFFER_HIGH-1); j++){
+            //special command start with slash
+            if (rxBuf[0] == '/') {
+                rxBuf[rxBufPos] = '\0';
+//                video_set_color(15,0);
+//                stdio_write("rx:");
+//                stdio_write(rxBuf);
+                ircCommand(rxBuf);
+                rxBufPos = 0;
+            } else {
+                //TODO write line, mark ready, whatever
+                //scroll up to make room
+                for (j=1; j<(DISP_BUFFER_HIGH-1); j++){
+                    for (i=0; i<DISP_BUFFER_WIDE; i++) {
+                        disp_buffer[j-1][i] = disp_buffer[j][i];
+                        color_buffer[j-1][i] = color_buffer[j][i];
+                    }
+                }
                 for (i=0; i<DISP_BUFFER_WIDE; i++) {
-                    disp_buffer[j-1][i] = disp_buffer[j][i];
-                    color_buffer[j-1][i] = color_buffer[j][i];
+                    c = ' ';
+                    color = 0;
+                    if (i < rxBufPos) {
+                        c = rxBuf[i];
+                        color = 0x87;
+                    }
+                    disp_buffer[DISP_BUFFER_HIGH-2][i] = c;
+                    color_buffer[DISP_BUFFER_HIGH-2][i] = color;
                 }
+                rxBufPos = 0;
             }
-            for (i=0; i<DISP_BUFFER_WIDE; i++) {
-                c = ' ';
-                color = 0;
-                if (i < rxBufPos) {
-                    c = rxBuf[i];
-                    color = 0x87;
-                }
-                disp_buffer[DISP_BUFFER_HIGH-2][i] = c;
-                color_buffer[DISP_BUFFER_HIGH-2][i] = color;
-            }
-            rxBufPos = 0;
         }
     }
 }
