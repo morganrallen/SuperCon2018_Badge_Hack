@@ -27,7 +27,7 @@
 #define RX_SIZE          (1500)
 #define TX_SIZE          (1460)
 
-#define BUF_SIZE (1024)
+#define BUF_SIZE (128)
 #define RD_BUF_SIZE (BUF_SIZE)
 static QueueHandle_t uart0_queue;
 
@@ -64,7 +64,6 @@ static void uart_event_task(void *pvParameters)
   data.size = sizeof(tx_buf);
   data.proto = MESH_PROTO_BIN;
 
-  int pos = 0;
   uint8_t size = 0;
 
 	bzero(dtmp, RD_BUF_SIZE);
@@ -78,31 +77,15 @@ static void uart_event_task(void *pvParameters)
 					other types of events. If we take too much time on data event, the queue might
 					be full.*/
 				case UART_DATA:
-					size = uart_read_bytes(uart_num, dtmp + pos, event.size, portMAX_DELAY);
-					//uart_write_bytes(uart_num, (char*)(dtmp + pos), event.size);
-          pos += size;
+					size = uart_read_bytes(uart_num, dtmp, event.size, portMAX_DELAY);
+          data.size = size;
 
-          for(i = 0; i < pos; i++) {
-            if(!(dtmp[i] == '\n' || dtmp[i] == '\r' || dtmp[i] == '\0')) continue;
+          //printf("sending %d bytes\n", data.size);
 
-            //printf("\nSending to %d clients: %s<\n", route_table_size, dtmp);
+          esp_mesh_send(&broadcast_group_id, &data, MESH_DATA_P2P | MESH_DATA_GROUP, NULL, 0);
 
-            esp_mesh_get_routing_table((mesh_addr_t *) &route_table,
-                                       CONFIG_MESH_ROUTE_TABLE_SIZE * 6, &route_table_size);
-
-            //esp_mesh_send(NULL, &data, MESH_DATA_P2P, NULL, 0);
-            esp_mesh_send(&broadcast_group_id, &data, MESH_DATA_P2P | MESH_DATA_GROUP, NULL, 0);
-            /*
-            for (i = 0; i < route_table_size; i++) {
-              err = esp_mesh_send(&route_table[i], &data, MESH_DATA_P2P, NULL, 0);
-              ESP_ERROR_CHECK(err);
-            }
-            */
-
-            bzero(dtmp, RD_BUF_SIZE);
-            pos = 0;
-            xQueueReset(uart0_queue);
-          }
+          bzero(data.data, RD_BUF_SIZE);
+          xQueueReset(uart0_queue);
 
 					break;
 
@@ -198,12 +181,15 @@ void esp_mesh_p2p_rx_main(void *arg)
     int flag = 0;
     data.data = rx_buf;
     data.size = RX_SIZE;
+    int i = 0;
 
     is_running = true;
     printf("Starting RX\n");
 
     while (is_running) {
         data.size = RX_SIZE;
+        bzero(rx_buf, RX_SIZE);
+
         err = esp_mesh_recv(&from, &data, 1000, &flag, NULL, 0);
 
         if(memcmp(from.addr, mac, 6) == 0) continue;
@@ -213,7 +199,7 @@ void esp_mesh_p2p_rx_main(void *arg)
             continue;
         }
 
-        printf("%s\n", rx_buf);
+        printf("%s", rx_buf);
     }
 
     printf("RX barfed\n");
